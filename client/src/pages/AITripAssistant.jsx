@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { aiAPI } from '../utils/api';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -12,6 +12,9 @@ const AITripAssistant = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');  // ← Only ONE declaration, inside component
+  const [generatedItinerary, setGeneratedItinerary] = useState(null);
+  const [tripId, setTripId] = useState(null);
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -21,38 +24,52 @@ const AITripAssistant = () => {
       [e.target.name]: e.target.value
     });
     setError('');
+    setInfoMessage('');  // Clear info message when user types
   };
 
-// In AITripAssistant.jsx handleSubmit function
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setError('');
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setInfoMessage('');
+    setGeneratedItinerary(null);
 
-  try {
-    console.log('🔄 Generating itinerary...');
-    const response = await aiAPI.generateItinerary({
-      destination: formData.destination,
-      state: formData.state,
-      homeLocation: formData.homeLocation
-    });
+    try {
+      console.log('🔄 Generating itinerary (this may take 30-45 seconds)...');
+      
+      setInfoMessage('Hey hey ! i am preparing... This may take 30-45 seconds for detailed itineraries');
+      
+      const response = await aiAPI.generateItinerary({
+        destination: formData.destination,
+        state: formData.state,
+        homeLocation: formData.homeLocation
+      });
 
-    console.log('✅ Backend response:', response);
-    
-    if (response.success) {
-      setGeneratedItinerary(response.itinerary);
-      setTripId(response.tripId);
-      // Success!
-    } else {
-      setError(response.error || 'Failed to generate itinerary');
+      console.log('✅ Backend response:', response);
+      
+      if (response.success) {
+        setInfoMessage('✅ Itinerary generated successfully!');
+        setGeneratedItinerary(response.itinerary);
+        setTripId(response.tripId);
+        
+        setTimeout(() => setInfoMessage(''), 2000);
+      } else {
+        setError(response.error || 'Failed to generate itinerary');
+        setInfoMessage('');
+      }
+    } catch (err) {
+      console.error('❌ Request error:', err);
+      
+      if (err.message?.includes('timeout') || err.code === 'ECONNABORTED') {
+        setInfoMessage('⏳ Still generating... Check "My Trips" in a moment');
+      } else {
+        setError(err.error || 'Network error. Check if backend is running.');
+        setInfoMessage('');
+      }
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    console.error('❌ Request error:', err);
-    setError(err.error || 'Network error. Check if backend is running.');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const popularDestinations = [
     { name: 'Goa', state: 'Goa' },
@@ -69,14 +86,13 @@ const handleSubmit = async (e) => {
     setFormData({
       destination,
       state,
-      homeLocation: 'Delhi'
+      homeLocation: 'Delhi'  // ← Added default home location
     });
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-green-50 py-12">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">
             AI Trip Assistant
@@ -86,7 +102,6 @@ const handleSubmit = async (e) => {
           </p>
         </div>
 
-        {/* Quick Destinations */}
         <div className="mb-8">
           <h3 className="text-lg font-semibold text-gray-700 mb-4 text-center">
             Quick Pick Popular Destinations:
@@ -104,7 +119,6 @@ const handleSubmit = async (e) => {
           </div>
         </div>
 
-        {/* Form */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {!isAuthenticated && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
@@ -114,9 +128,23 @@ const handleSubmit = async (e) => {
             </div>
           )}
 
+          {/* GREEN INFO MESSAGE */}
+          {infoMessage && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <p className="text-green-700 flex items-center">
+                <span className="text-xl mr-3">🤖</span>
+                {infoMessage}
+              </p>
+            </div>
+          )}
+
+          {/* RED ERROR MESSAGE */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <p className="text-red-700">{error}</p>
+              <p className="text-red-700 flex items-center">
+                <span className="text-xl mr-3">❌</span>
+                {error}
+              </p>
             </div>
           )}
 
@@ -185,7 +213,6 @@ const handleSubmit = async (e) => {
             </button>
           </form>
 
-          {/* Features */}
           <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center p-4">
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -212,6 +239,72 @@ const handleSubmit = async (e) => {
             </div>
           </div>
         </div>
+
+        {generatedItinerary && (
+          <div className="mt-12 space-y-6 fade-in">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <p className="text-green-700">
+                ✅ Itinerary generated successfully! 
+                <Link to={`/itinerary/${tripId}`} className="font-semibold underline ml-2">
+                  View full itinerary details →
+                </Link>
+              </p>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">
+                Your {formData.destination} Itinerary Preview
+              </h2>
+              
+              <p className="text-gray-700 mb-6 leading-relaxed">
+                {generatedItinerary.overview}
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <h3 className="font-semibold text-lg mb-3 text-blue-800">📍 Top Places to Visit</h3>
+                  <ul className="space-y-2">
+                    {generatedItinerary.places?.slice(0, 4).map((place, i) => (
+                      <li key={i} className="flex items-start">
+                        <span className="text-blue-500 mr-2">•</span>
+                        <span className="text-gray-700">{place}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                
+                <div className="bg-green-50 rounded-lg p-4">
+                  <h3 className="font-semibold text-lg mb-3 text-green-800">💰 Estimated Cost</h3>
+                  <p className="text-gray-700">{generatedItinerary.estimatedCost}</p>
+                  
+                  <h3 className="font-semibold text-lg mb-3 mt-4 text-green-800">🌤️ Best Time to Visit</h3>
+                  <p className="text-gray-700">{generatedItinerary.bestTime}</p>
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-center space-x-4">
+                <Link 
+                  to={`/itinerary/${tripId}`}
+                  className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold"
+                >
+                  View Complete Itinerary →
+                </Link>
+                <button
+                  onClick={() => {
+                    setFormData({ destination: '', state: '', homeLocation: '' });
+                    setGeneratedItinerary(null);
+                    setTripId(null);
+                    setInfoMessage('');
+                    setError('');
+                  }}
+                  className="bg-gray-600 text-white px-8 py-3 rounded-lg hover:bg-gray-700 transition-colors font-semibold"
+                >
+                  Plan Another Trip
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
